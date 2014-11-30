@@ -1,0 +1,68 @@
+import ConfigParser
+from TwitterAPI import TwitterAPI
+import re
+from StringIO import StringIO
+from zipfile import ZipFile
+from urllib import urlopen
+import sys
+import pickle
+
+def tokenize(text):
+return re.sub('\W+', ' ', text.lower()).split()
+
+def afinn_sent(terms, afinn, verbose=False):
+    pos = 0
+    neg = 0
+
+    for t in terms:
+        if t in afinn:
+            if verbose:
+                print '\t%s=%d' % (t, afinn[t])
+            if afinn[t] > 0:
+                pos += afinn[t]
+            else:
+                neg += -1 * afinn[t]
+    
+    return pos, neg
+
+def get_twitter(config_file):
+    config = ConfigParser.ConfigParser()
+    config.read(config_file)
+    twitter = TwitterAPI(
+                   config.get('twitter', 'consumer_key'),
+                   config.get('twitter', 'consumer_secret'),
+                   config.get('twitter', 'access_token'),
+                   config.get('twitter', 'access_token_secret'))
+    return twitter
+
+url = urlopen('http://www2.compute.dtu.dk/~faan/data/AFINN.zip')
+zipfile = ZipFile(StringIO(url.read()))
+afinn_file = zipfile.open('AFINN/AFINN-111.txt')
+afinn = dict()
+
+for line in afinn_file:
+    section = line.strip().split()
+    if len(section) == 2:
+        afinn[section[0]] = int(section[1])
+twitter = get_twitter('twitter.cfg')
+tweets = []
+
+for w in twitter.request('search/tweets', {'q': sys.argv[1], 'count': 100}):
+    tweets.append(w)
+
+pickle.dump(tweets,open(sys.argv[1]+'.pkl','wb'))
+tokes = [tokenize(t['text']) for t in tweets]
+pos2 = []
+neg2 = []
+for tweet in tokens:
+    pos, neg = afinn_sent(tweet, afinn)
+    if pos > neg:
+        pos2.append((' '.join(tweet), pos, neg))
+    elif neg > pos:
+        neg2.append((' '.join(tweet), pos, neg))
+
+score = (1.0*len(pos2)+1.0)/(len(pos2)+len(neg2)+1.0)*100.0
+print score
+
+with open("scores.txt", "a") as myfile:
+myfile.write(sys.argv[1]+' '+str(score)+'\n')
